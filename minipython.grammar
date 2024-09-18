@@ -1,0 +1,241 @@
+/*
+ * Ιωάννης Μακρίδης 3180100
+ * Κωνσταντίνος Αναστασιάδης 3140312
+ * Χρήστος Παπαγεωργίου 3180260
+ * Νικόλας Κουντουριώτης p3170195
+ */
+
+Package minipython;
+
+Helpers
+	digit = ['0' .. '9'];
+	letter = ['a' .. 'z']|['A' .. 'Z'];
+	cr = 13;
+	lf = 10;
+	all = [0..127];
+	eol = lf | cr | cr lf ;
+	not_eol = [all - [cr + lf]];
+
+Tokens
+	tab = 9;
+	plus = '+';
+	minus = '-';
+	mult = '*';
+	period = '.';
+	dmult = '**';
+	div = '/';
+	eq = '=';
+	mod = '%';
+	minus_eq = '-=';
+	div_eq = '/=';
+	exclam = '!';
+	def = 'def';
+	not = 'not';
+	and = 'and';
+	or = 'or';
+	l_par = '(';
+	r_par = ')';
+	l_br = '[';
+	r_br = ']';
+	comma = ',';
+	qmark = '?';
+	gqmark = ';';
+	if = 'if';
+	elif = 'elif';
+	else = 'else';
+	while = 'while';
+	for = 'for';
+	in = 'in';
+	print = 'print';
+	return = 'return';
+    from = 'from';
+    import = 'import';
+    as = 'as';
+    assert = 'assert';
+    length = 'len';
+    none = 'None';
+	less = '<';
+	great = '>';
+	not_eq = '!=';
+	less_eq = '<=';
+	great_eq = '>=';
+	equals = '==';
+	max = 'max';
+	min = 'min';
+	true = 'true';
+	semi = ':';
+	false = 'false';
+	quote = '"';
+	blank = (' ' | lf | cr);
+	line_comment = '#' not_eol* eol;
+	number = digit+ | (digit+ '.' digit+);
+	id = letter (letter | digit)*;
+	string = '"'not_eol* '"' | '''not_eol* ''';
+
+Ignored Tokens
+	blank, line_comment;
+
+Productions
+    goal = commands*{-> New goal([commands])};
+    commands = {function} function {-> New commands.function(function)} |
+               {statement} statement {-> New commands.statement(statement)};
+
+    function = def id l_par argument? r_par semi statement {-> New function(id, [argument], statement)};
+
+    single_arg {-> argument} = {with_default} id eq value {-> New argument.with_default(id, value)} |
+                               {without_default} id {-> New argument.without_default(id)};
+
+    argument = {single} single_arg {-> single_arg.argument} |
+               {multiple} argument comma single_arg {-> New argument.multiple(argument, single_arg.argument)};
+
+    import_impl = {import} import module as_id? comma_mod_as_id* {-> New import_impl.import(module, [as_id.expression], [comma_mod_as_id])} |
+                  {from_import} from module import id as_id? comma_id_as_id* {-> New import_impl.from_import(module, id, [as_id.expression], [comma_id_as_id])};
+    module = idp* id {-> New module([idp.expression], id)};
+
+    statement = {conditional}  tab* if boolean_operation semi statement {-> New statement.conditional(boolean_operation.comparison, statement)}
+    		| {while_loop} 	   tab* while boolean_operation semi statement {-> New statement.while_loop(boolean_operation.comparison, statement)}
+    		| {for_loop} 	   tab* for [for_item]:id in [for_source]:id semi statement {-> New statement.for_loop(for_item, for_source, statement)}
+    		| {return} 		   tab* return expression {-> New statement.return(expression)}
+    		| {print} 		   tab* print expression comma_and_expression* {-> New statement.print(expression, [comma_and_expression.expression])}
+    		| {assignment}     tab* id assign_op expression {-> New statement.assignment(id, expression)}
+    		| {assignment_arr} tab* id l_br [left]:expression r_br assign_op [right]:expression {-> New statement.assignment_arr(id, left, right)}
+    		| {assertion}      tab* assert expression comma_and_expression* {-> New statement.assertion(expression, [comma_and_expression.expression])}
+    		| {f_call} 		   tab* function_call {-> New statement.f_call(function_call)}
+    		| {import}         tab* import_impl {-> New statement.import(import_impl)};
+
+	expression = {num} addsub {-> New expression.expression(addsub.expression)} |
+	             {f_call} function_call {-> New expression.f_call(function_call)} |
+				 {len} length l_par expression r_par {-> New expression.expression(expression)} |
+				 {max} max l_par value comma_and_value* r_par {-> New expression.max_min(value, [comma_and_value.value])} |
+				 {min} min l_par value comma_and_value* r_par {-> New expression.max_min(value, [comma_and_value.value])} |
+				 {expr_arr} l_br expression comma_and_expression* r_br {-> New expression.expr_arr(expression, [comma_and_expression.expression])};
+
+    // Precedence ** -> * / -> + -
+	power {-> expression} = {numeric} numeric {-> numeric.expression} |
+                	        {pow} power dmult numeric {-> New expression.pow(power.expression, numeric.expression)};
+
+	multdiv {-> expression} = {pow} power {-> power.expression} |
+			                  {mult} multdiv mult power {-> New expression.mult(multdiv.expression, power.expression)} |
+			                  {mod} multdiv mod power {-> New expression.mod(multdiv.expression, power.expression)} |
+			                  {div} multdiv div power {-> New expression.div(multdiv.expression, power.expression)};
+
+	addsub {-> expression} = {multdiv} multdiv {-> multdiv.expression} |
+			                 {add} addsub plus multdiv {-> New expression.add(addsub.expression, multdiv.expression)} |
+			                 {sub} addsub minus multdiv {-> New expression.sub(addsub.expression, multdiv.expression)};
+
+    inequalities {-> comparison} = {true} true {-> New comparison.true(true)} |
+                                   {false} false {-> New comparison.false(false)} |
+                                   {less} [left]:expression less [right]:expression {-> New comparison.less(left, right)} |
+                                   {lesseq} [left]:expression less_eq [right]:expression {-> New comparison.lesseq(left, right)} |
+                                   {great} [left]:expression great [right]:expression {-> New comparison.great(left, right)} |
+                                   {greateq} [left]:expression great_eq [right]:expression {-> New comparison.greateq(left, right)} |
+                                   {noteq} [left]:expression not_eq [right]:expression {-> New comparison.noteq(left, right)} |
+                                   {eq} [left]:expression equals [right]:expression {-> New comparison.eq(left, right)};
+
+    // Precedence NOT -> AND -> OR -> inequalities
+    not_operation {-> comparison} = {not} not not_operation {-> New comparison.not(not_operation.comparison)} |
+                                    {inequality_comparison} inequalities {-> inequalities.comparison};
+
+    // NOT -> AND
+    and_operation {-> comparison} = {not} not_operation {-> not_operation.comparison} |
+                                    {and} and_operation and not_operation {-> New comparison.and(and_operation.comparison, not_operation.comparison)};
+
+    // AND -> OR
+    or_operation {-> comparison} = {and} and_operation {-> and_operation.comparison} |
+                                   {or} or_operation or and_operation {-> New comparison.or(or_operation.comparison, and_operation.comparison)};
+
+    // OR
+    boolean_operation {-> comparison} = {or_operation} or_operation {-> or_operation.comparison};
+
+    // This node only exists for AST transformations
+    numeric {-> expression} = {value} value {-> New expression.value(value)};
+
+    // identifiers, function call, numbers, strings, true, false, none
+    value = {id} id {-> New value.id(id)} |
+            {arr} id l_br expression r_br {-> New value.arr(id, expression)} |
+            {f_call} id period function_call {-> New value.dot_f_call(id, function_call)} |
+            {number} number {-> New value.num(number)} |
+            {string} string {-> New value.string(string)} |
+            {none} none     {-> New value.none(none)};
+
+    function_call = id l_par arg_list? r_par {-> New function_call(id, arg_list)};
+    arg_list = {single} expression {-> New arg_list.single(expression)} |
+               {multiple} arg_list comma expression {-> New arg_list.multiple(arg_list, expression)} ;
+
+    // assignment operators (=, +=, -=)
+    assign_op {->} = {assign}      eq {->}
+    			    | {sub_assign}    minus_eq {->}
+    			    | {divide_assign} div_eq {->};
+    comma_and_expression {-> expression} = comma expression {-> New expression.expression(expression)};
+    comma_and_value {-> value} = comma value {-> value};
+
+    as_id {-> expression} = as id {-> New expression.id(id)};
+
+    idp {-> expression} = id period {-> New expression.id(id)};
+    comma_mod_as_id = comma module as_id? {-> New comma_mod_as_id(module, [as_id.expression])};
+    comma_id_as_id = comma id as_id? {-> New comma_id_as_id(id, [as_id.expression])};
+
+Abstract Syntax Tree
+    goal = commands*;
+    commands = {statement} statement |
+               {function} function;
+
+    function = id argument* statement;
+    argument = 	{with_default} id value |
+    			{without_default} id |
+    			{multiple} [first]:argument [second]:argument;
+
+    import_impl = {import} module expression* comma_mod_as_id* |
+                  {from_import} module id expression* comma_id_as_id*;
+    module = expression* id;
+
+    statement = {conditional}  comparison statement
+        		| {while_loop} 	   comparison statement
+        		| {for_loop} 	   [for_item]:id [for_source]:id statement
+        		| {return} 		   expression
+        		| {print} 		   [expr]:expression [coma_expr]:expression*
+        		| {assignment}     id expression
+        		| {assignment_arr} id [left]:expression [right]:expression
+        		| {assertion}      [expr]:expression [coma_expr]:expression*
+        		| {f_call} 		   function_call
+        		| {import} import_impl;
+
+    expression = {add} [left]:expression [right]:expression |
+                 {sub} [left]:expression [right]:expression |
+                 {mult} [left]:expression [right]:expression |
+                 {div} [left]:expression [right]:expression |
+                 {mod} [left]:expression [right]:expression |
+                 {pow} [left]:expression [right]:expression |
+    	         {f_call} function_call |
+    	         {id} id |
+    	         {value} value |
+    			 {expression} expression |
+    			 {max_min} [value]:value [comma_value]:value* |
+    			 {expr_arr} [expr]:expression [comma_expr]:expression*;
+
+    comparison = {and} [left]:comparison [right]:comparison |
+                 {or} [left]:comparison [right]:comparison |
+                 {not} comparison |
+                 {less} [left]:expression [right]:expression |
+                 {lesseq} [left]:expression [right]:expression |
+                 {great} [left]:expression [right]:expression |
+                 {greateq} [left]:expression [right]:expression |
+                 {noteq} [left]:expression [right]:expression |
+                 {eq} [left]:expression [right]:expression |
+                 {true} true |
+                 {false} false;
+
+    // identifiers, function call, numbers, strings, true, false, none
+    value = {string} string |
+            {num} number    |
+            {id} id |
+            {dot_f_call} id function_call |
+   			{arr} id expression |
+            {none} none;
+
+    function_call = id arg_list;
+    arg_list = {single} expression |
+    		  {multiple} arg_list expression;
+
+    comma_mod_as_id = module expression*;
+    comma_id_as_id = [id]:id [id_arr]:expression*;
